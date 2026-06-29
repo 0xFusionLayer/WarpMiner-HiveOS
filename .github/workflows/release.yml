@@ -1,0 +1,57 @@
+name: Release HiveOS Package
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build_release:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get warpminer version
+        id: version
+        run: |
+          VERSION=$(grep CUSTOM_VERSION h-manifest.conf | cut -d= -f2 | tr -d '"' | tr -d ' ')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Download latest warpminer
+        run: |
+          TAG=$(curl -fsSL https://api.github.com/repos/0xFusionLayer/warpminer/releases/latest | jq -r '.tag_name')
+          wget "https://github.com/0xFusionLayer/warpminer/releases/download/${TAG}/warpminer-linux-amd64-${TAG}.tar.gz"
+          mkdir -p temp
+          tar xzf "warpminer-linux-amd64-${TAG}.tar.gz" -C temp
+          mv "temp/warpminer-${TAG#v}/warpminer" ./warpminer-binary
+          rm -rf temp "warpminer-linux-amd64-${TAG}.tar.gz"
+
+      - name: Prepare HiveOS package
+        run: |
+          mkdir -p warpminer
+          cp warpminer-binary warpminer/warpminer
+          cp h-manifest.conf warpminer/
+          cp h-config.sh warpminer/
+          cp h-run.sh warpminer/
+          cp h-stats.sh warpminer/
+          chmod +x warpminer/*.sh
+          chmod +x warpminer/warpminer
+
+      - name: Archive Release
+        uses: thedoctor0/zip-release@0.7.6
+        with:
+          type: tar
+          filename: warpminer-${{ steps.version.outputs.version }}.tar.gz
+          path: warpminer
+
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: warpminer-${{ steps.version.outputs.version }}.tar.gz 
